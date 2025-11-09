@@ -1,4 +1,4 @@
-# सुनिश्चित करें कि आपके पास ये लाइब्रेरीज़ स्थापित हैं:
+# Ensure these libraries are installed:
 # pip install streamlit pandas plotly numpy statsmodels
 
 import streamlit as st
@@ -9,13 +9,13 @@ import numpy as np
 from statsmodels.tsa.seasonal import seasonal_decompose 
 from plotly.subplots import make_subplots 
 
-# --- 1. कॉन्फ़िगरेशन और डेटा लोडिंग ---
+# --- 1. Configuration and Data Loading ---
 USD_TO_INR_RATE = 88.02145 
 WINDOW = 30
-ANNUALIZATION_FACTOR = np.sqrt(252) 
+ANNUALIZATION_FACTOR = np.sqrt(252) # Trading days per year
 CHART_HEIGHT = 450 
 
-# COIN_MAPPING को आपके द्वारा अपलोड किए गए वास्तविक फ़ाइल नामों के अनुरूप ठीक किया गया है।
+# COIN_MAPPING fixed to match the actual file names you uploaded.
 COIN_MAPPING = {
     'Bitcoin (BTC)': 'BTC-USD From 2014 To Dec-2024.csv',
     'Ethereum (ETH)': 'ETH-USD From 2017 To Dec-2024.csv',
@@ -29,7 +29,7 @@ COIN_MAPPING = {
     'USDC': 'USDC-USD From 2018 To Dec-2024.csv',
 }
 
-# Streamlit पेज सेटिंग्स
+# Streamlit Page Settings
 st.set_page_config(
     layout="wide", 
     page_title="Crypto Price Analysis Dashboard (INR)",
@@ -37,14 +37,14 @@ st.set_page_config(
 )
 
 # ----------------------------------------------------
-# ग्लोबल लाइट थीम सेटिंग्स और CSS फिक्स
+# Global Light Theme Settings and CSS Fixes
 # ----------------------------------------------------
 LIGHT_BG = '#FFFFFF'     # WHITE background
 DARK_TEXT = '#1C1C1C'    # BLACK text
 GRID_COLOR = '#CCCCCC'   # Light grey grid lines
 PLOTLY_TEMPLATE = 'plotly_white' # Plotly Light Theme
 
-# CSS इंजेक्शन: बैकग्राउंड को सफेद और सभी टेक्स्ट को काला करें
+# CSS Injection: Set background to white and all text to black
 st.markdown(
     f"""
     <style>
@@ -56,7 +56,7 @@ st.markdown(
     .stSidebar > div:first-child {{ 
         background-color: {LIGHT_BG}; 
     }}
-    /* FIX: सभी Streamlit टेक्स्ट को काला करें */
+    /* FIX: Set all Streamlit text to black */
     h1, h2, h3, h4, h5, h6, p, .stMarkdown, .stSubheader, .stTitle, div, label {{
         color: {DARK_TEXT} !important;
     }}
@@ -71,17 +71,22 @@ st.markdown(
         color: #000000 !important; 
         background-color: #FFFFFF !important; 
     }}
+    /* Filter header alignment */
+    .stSubheader {{
+        padding-top: 10px;
+        margin-bottom: 0px;
+    }}
     </style>
     """, 
     unsafe_allow_html=True
 ) 
 
 
-# --- 2. डेटा लोडिंग और प्रोसेसिंग (Caching के साथ) ---
+# --- 2. Data Loading and Processing (with Caching) ---
 
 @st.cache_data
 def load_and_prepare_data(coin_key, rate):
-    """चयनित कॉइन के लिए डेटा लोड करता है, उसे साफ करता है, और सभी गणनाएँ करता है।"""
+    """Loads, cleans, and performs all calculations for the selected coin."""
     file_name = COIN_MAPPING[coin_key] 
     
     try:
@@ -95,14 +100,14 @@ def load_and_prepare_data(coin_key, rate):
 
     df['Date'] = pd.to_datetime(df['Date'])
     
-    # NaN/Inf सफाई और संख्यात्मक रूपांतरण
+    # NaN/Inf cleaning and numerical conversion
     numeric_cols = ['Open', 'High', 'Low', 'Close', 'Volume']
     for col in numeric_cols:
         df[col] = pd.to_numeric(df[col], errors='coerce')
     
     df.replace([np.inf, -np.inf], np.nan, inplace=True)
     
-    # INR कन्वर्ज़न
+    # INR Conversion
     df['Close Price (INR)'] = df['Close'] * rate
     df['Open Price (INR)'] = df['Open'] * rate
     df['High Price (INR)'] = df['High'] * rate
@@ -117,7 +122,7 @@ def load_and_prepare_data(coin_key, rate):
         df['Log Return'].rolling(window=WINDOW).std() * ANNUALIZATION_FACTOR * 100
     )
     
-    # Cumulative Returns की गणना (Growth Analysis के लिए)
+    # Calculate Cumulative Returns (for Growth Analysis)
     df['Cumulative Returns'] = (1 + df['Log Return']).cumprod() - 1
 
     df.dropna(subset=['Log Return'], inplace=True)
@@ -127,7 +132,7 @@ def load_and_prepare_data(coin_key, rate):
 
 @st.cache_data
 def load_all_close_prices(coin_mapping, rate):
-    """Correlation Heatmap के लिए सभी कॉइन की Close Price लोड करता है।"""
+    """Loads Close Price for all coins for the Correlation Heatmap."""
     all_data = {}
     for coin_name, file_name in coin_mapping.items():
         try:
@@ -137,13 +142,15 @@ def load_all_close_prices(coin_mapping, rate):
             df['Close Price (INR)'] = df['Close'] * rate
             all_data[coin_name] = df['Close Price (INR)']
         except Exception:
+            # If a file fails to load, skip it
             pass
             
+    # Combine into a single DataFrame, aligning by Date
     df_combined = pd.DataFrame(all_data).dropna()
     return df_combined
 
 
-# --- 3. Sidebar (कॉइन चयन) ---
+# --- 3. Sidebar (Coin Selection) ---
 st.sidebar.header("Select Coin")
 
 coin_options = sorted(list(COIN_MAPPING.keys()))
@@ -153,67 +160,68 @@ selected_coin = st.sidebar.selectbox(
     index=coin_options.index('Bitcoin (BTC)') if 'Bitcoin (BTC)' in coin_options else 0
 )
 
-# चयनित कॉइन के लिए डेटा लोड करें
+# Load data for the selected coin
 df = load_and_prepare_data(selected_coin, USD_TO_INR_RATE)
 
 if df.empty:
     st.stop()
 
 
-# --- 3.1. Filter UI (NEW) ---
+# --- 3.1. Global Filter UI ---
 st.sidebar.markdown("---")
-st.sidebar.header("Time Filter")
+st.sidebar.header("Global Time Filter")
 
-# Extract unique years for the filter options
-df_years = sorted(list(df.index.year.unique()), reverse=True) # Sort in descending order
-
-# Year Filter
-selected_year = st.sidebar.selectbox(
-    'Filter by Year',
-    options=['All'] + df_years,
-    index=0
-)
-
-# Month Filter
+# Month/Year Logic setup
 month_to_num = {
     'January': 1, 'February': 2, 'March': 3, 'April': 4, 'May': 5, 'June': 6,
     'July': 7, 'August': 8, 'September': 9, 'October': 10, 'November': 11, 'December': 12
 }
 month_names = ['All'] + list(month_to_num.keys())
 
-selected_month_name = st.sidebar.selectbox(
-    'Filter by Month',
+# Extract unique years for the filter options
+df_years = sorted(list(df.index.year.unique()), reverse=True)
+all_years = ['All'] + df_years
+
+# Global Year Filter
+selected_year_global = st.sidebar.selectbox(
+    'Filter by Year (Global)',
+    options=all_years,
+    index=0
+)
+
+# Global Month Filter
+selected_month_name_global = st.sidebar.selectbox(
+    'Filter by Month (Global)',
     options=month_names,
     index=0
 )
 
-# --- 3.2. Apply Filtering Logic ---
+# --- Apply Global Filtering Logic ---
 filtered_df = df.copy() 
 
-if selected_year != 'All':
-    filtered_df = filtered_df[filtered_df.index.year == selected_year]
+if selected_year_global != 'All':
+    filtered_df = filtered_df[filtered_df.index.year == selected_year_global]
 
-if selected_month_name != 'All':
-    selected_month_num = month_to_num[selected_month_name]
+if selected_month_name_global != 'All':
+    selected_month_num = month_to_num[selected_month_name_global]
     filtered_df = filtered_df[filtered_df.index.month == selected_month_num]
 
 # If filtering results in an empty DataFrame, use the original data and display a message.
 if filtered_df.empty:
-    st.warning(f"Filter combination (Year: {selected_year}, Month: {selected_month_name}) returned no data. Showing full data.")
-    # Resetting to full data only if the initial filter produced nothing
+    st.warning(f"Global filter combination (Year: {selected_year_global}, Month: {selected_month_name_global}) returned no data. Showing full data.")
     filtered_df = df.copy()
 
 
-# --- 4. Streamlit डैशबोर्ड लेआउट ---
+# --- 4. Streamlit Dashboard Layout ---
 st.title(f"{selected_coin} Price Analysis Dashboard (INR) 📊")
 st.caption(f"All prices are calculated using an estimated USD to INR rate of ₹{USD_TO_INR_RATE}")
 st.markdown("---")
 
 
-# --- 5. चार्ट बनाने के लिए फ़ंक्शंस ---
+# --- 5. Functions to Create Charts ---
 
 def update_light_theme_layout(fig):
-    """Plotly चार्ट्स पर लाइट थीम सेटिंग्स लागू करता है।"""
+    """Applies Light Theme settings to Plotly charts."""
     fig.update_layout(
         plot_bgcolor=LIGHT_BG,
         paper_bgcolor=LIGHT_BG,
@@ -360,13 +368,14 @@ def create_decomposition_plot(df, coin_name):
     """Seasonal/Time Series Decomposition Plot using make_subplots."""
     
     if len(df) < 30:
-        st.warning(f"{coin_name} के लिए Decomposition Analysis को दिखाने के लिए कम से कम 30 दिनों का डेटा चाहिए।")
+        st.warning(f"Decomposition Analysis requires at least 30 days of data for {coin_name}.")
         return None
 
     try:
+        # Use period=7 for weekly seasonality
         decomposition = seasonal_decompose(df['Close Price (INR)'], model='additive', period=7, extrapolate_trend='freq')
     except Exception as e:
-        st.error(f"Decomposition Analysis फेल हो गया: सुनिश्चित करें कि आपके डेटा में कोई गैप नहीं है और यह पर्याप्त रूप से लंबा है। त्रुटि: {e}")
+        st.error(f"Decomposition Analysis failed: Ensure your data has no gaps and is sufficiently long. Error: {e}")
         return None
     
     decomposed_df = pd.DataFrame({
@@ -399,10 +408,11 @@ def create_decomposition_plot(df, coin_name):
 
 def create_correlation_heatmap(coin_mapping):
     """Creates a correlation heatmap for all cryptocurrencies."""
+    # NOTE: This uses ALL available data for accurate cross-correlation.
     df_combined = load_all_close_prices(coin_mapping, USD_TO_INR_RATE)
     
     if df_combined.empty or len(df_combined.columns) < 2:
-        st.warning("Correlation Heatmap बनाने के लिए पर्याप्त डेटा लोड नहीं किया जा सका।")
+        st.warning("Could not load enough data to create Correlation Heatmap.")
         return None
         
     corr_matrix = df_combined.corr()
@@ -435,7 +445,7 @@ def create_correlation_heatmap(coin_mapping):
                     y=corr_matrix.index[i],
                     text=f"{val:.2f}",
                     showarrow=False,
-                    # White text for high correlation (dark color on map), Black text otherwise
+                    # Black text for low correlation (light color on map), White text otherwise
                     font=dict(color='black' if abs(val) < 0.5 else 'white', size=10) 
                 )
             )
@@ -443,65 +453,89 @@ def create_correlation_heatmap(coin_mapping):
     return update_light_theme_layout(fig)
 
 
-# --- 6. Streamlit में लेआउट बनाना (Plots) ---
+# --- 6. Creating the Layout (Plots) ---
 
-st.header("1. Descriptive Analysis & Price Action")
-# 1. Candlestick Chart (OHLC)
-st.subheader("1.1. Candlestick Chart (OHLC)")
-st.plotly_chart(create_candlestick_chart(filtered_df, selected_coin), use_container_width=True)
-st.markdown("---")
+# Helper function to render a chart section using the globally filtered DF
+def render_chart_section_global(df_to_use, section_header, sub_header_text, chart_func, *args):
+    
+    # FIX: Only call st.header() if the string is not empty
+    if section_header:
+        st.header(section_header)
+        
+    # FIX: Only call st.subheader() if the string is not empty
+    if sub_header_text:
+        st.subheader(sub_header_text)
+    
+    # FIX: Pass the arguments correctly. The *args contain the y_col, title, y_title, 
+    # and selected_coin should be the last argument (coin_name).
+    chart_args = list(args) + [selected_coin]
+    
+    # Render the chart using the globally filtered DataFrame
+    # chart_func will now receive: (df, y_col, title, y_title, coin_name) OR (df, coin_name)
+    chart = chart_func(df_to_use, *chart_args)
+    st.plotly_chart(chart, use_container_width=True)
+    st.markdown("---")
 
-# 2. Volume Analysis (Volume Dark Red, Price Dark Blue)
-st.header("2. Volume Analysis")
-st.subheader("2.1. Price and Volume Over Time")
-st.plotly_chart(create_dual_axis_chart(filtered_df, selected_coin), use_container_width=True)
-st.markdown("---")
 
+# 1. Descriptive Analysis & Price Action
+render_chart_section_global(
+    filtered_df, "1. Descriptive Analysis & Price Action", "1.1. Candlestick Chart (OHLC)", 
+    create_candlestick_chart
+)
+
+# 2. Volume Analysis 
+render_chart_section_global(
+    filtered_df, "2. Volume Analysis", "2.1. Price and Volume Over Time", 
+    create_dual_axis_chart
+)
 
 # 3. Trend Analysis
-st.header("3. Trend Analysis")
-st.subheader("3.1. Moving Averages (50-Day & 200-Day)")
-st.plotly_chart(create_moving_average_plot(filtered_df, selected_coin), use_container_width=True)
-st.markdown("---")
+render_chart_section_global(
+    filtered_df, "3. Trend Analysis", "3.1. Moving Averages (50-Day & 200-Day)", 
+    create_moving_average_plot
+)
 
 # 4. Time Series Decomposition
-st.header("4. Time Series Decomposition")
-st.subheader("4.1. Price Decomposition (Trend, Seasonal, Residual)")
-decomposition_chart = create_decomposition_plot(filtered_df, selected_coin)
-if decomposition_chart:
-    st.plotly_chart(decomposition_chart, use_container_width=True)
-st.markdown("---")
+render_chart_section_global(
+    filtered_df, "4. Time Series Decomposition", "4.1. Price Decomposition (Trend, Seasonal, Residual)", 
+    create_decomposition_plot
+)
 
+# 5. Volatility & Risk Analysis (Rolling Volatility)
+render_chart_section_global(
+    filtered_df, "5. Volatility & Risk Analysis", "5.1. Annualized Rolling Volatility (30-Day)", 
+    create_line_chart, 'Annualized Volatility (%)', 'Annualized Rolling Volatility (30-Day)', 'Volatility (%)'
+)
 
-# 5. Volatility & Risk Analysis
-st.header("5. Volatility & Risk Analysis")
-st.subheader("5.1. Annualized Rolling Volatility (30-Day)")
-st.plotly_chart(create_line_chart(filtered_df, 'Annualized Volatility (%)', 'Annualized Rolling Volatility (30-Day)', 'Volatility (%)', selected_coin), use_container_width=True)
-st.markdown("---")
+# 5. Volatility & Risk Analysis (Histogram)
+render_chart_section_global(
+    filtered_df, "5. Volatility & Risk Analysis", "5.2. Daily Log Returns Distribution (Histogram)", 
+    create_histogram
+)
 
-st.subheader("5.2. Daily Log Returns Distribution (Histogram)")
-st.plotly_chart(create_histogram(filtered_df, selected_coin), use_container_width=True)
-st.markdown("---")
+# 6. Return & Growth Analysis (Cumulative Returns)
+render_chart_section_global(
+    filtered_df, "6. Return & Growth Analysis", "6.1. Cumulative Returns (Growth)", 
+    create_cumulative_returns_plot
+)
 
-# 6. Return & Growth Analysis
-st.header("6. Return & Growth Analysis")
-st.subheader("6.1. Cumulative Returns (Growth)")
-st.plotly_chart(create_cumulative_returns_plot(filtered_df, selected_coin), use_container_width=True)
-st.markdown("---")
-
-st.subheader("6.2. Daily Log Returns Over Time")
-st.plotly_chart(create_line_chart(filtered_df, 'Daily Return (%)', 'Daily Log Return (%)', 'Daily Log Return (%)', selected_coin), use_container_width=True)
-st.markdown("---")
+# 6. Return & Growth Analysis (Daily Log Returns)
+render_chart_section_global(
+    filtered_df, "6. Return & Growth Analysis", "6.2. Daily Log Returns Over Time", 
+    create_line_chart, 'Daily Return (%)', 'Daily Log Return (%)', 'Daily Log Return (%)'
+)
 
 # 7. Correlation Analysis
 st.header("7. Correlation Analysis")
 st.subheader("7.1. Correlation Heatmap Across All Coins")
-# Note: Heatmap uses the full, unfiltered data for all coins
+# Heatmap uses the full, unfiltered data for all coins
 heatmap_chart = create_correlation_heatmap(COIN_MAPPING)
 if heatmap_chart:
     st.plotly_chart(heatmap_chart, use_container_width=True)
 st.markdown("---")
 
-st.subheader("7.2. Open vs Close Price on Mondays (Single Coin)")
-st.plotly_chart(create_monday_correlation(filtered_df, selected_coin), use_container_width=True)
-st.markdown("---")
+# 7.2. Open vs Close Price on Mondays (Single Coin)
+render_chart_section_global(
+    filtered_df, "", "7.2. Open vs Close Price on Mondays (Single Coin)", 
+    create_monday_correlation
+)
